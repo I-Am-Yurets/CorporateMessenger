@@ -21,3 +21,7 @@ set(CMAKE_AUTORCC ON)
 add_subdirectory(common)
 add_subdirectory(server)
 add_subdirectory(client)
+
+if(WIN32)
+    add_definitions(-D_WIN32_WINNT=0x0A00) # Орієнтація на Windows 10/11
+endif()

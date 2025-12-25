@@ -81,7 +81,7 @@ std::string Message::typeToString(MessageType type) {
         case MessageType::RECEIVE_MESSAGE: return "RECEIVE_MESSAGE";
         case MessageType::STATUS_UPDATE: return "STATUS_UPDATE";
         case MessageType::SUCCESS: return "SUCCESS";
-        case MessageType::ERROR: return "ERROR";
+        case MessageType::ERR_MSG: return "ERROR";
         default: return "UNKNOWN";
     }
 }
@@ -96,6 +96,6 @@ MessageType Message::stringToType(const std::string& str) {
     if (str == "RECEIVE_MESSAGE") return MessageType::RECEIVE_MESSAGE;
     if (str == "STATUS_UPDATE") return MessageType::STATUS_UPDATE;
     if (str == "SUCCESS") return MessageType::SUCCESS;
-    if (str == "ERROR") return MessageType::ERROR;
-    return MessageType::ERROR;
+    if (str == "ERROR") return MessageType::ERR_MSG;
+    return MessageType::ERR_MSG;
 }

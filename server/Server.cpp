@@ -64,7 +64,7 @@ void Server::deliverMessage(const Message& msg) {
         // Повідомляємо відправника про статус
         auto senderIt = clients_.find(msg.getSender());
         if (senderIt != clients_.end()) {
-            Message statusMsg(MessageType::ERROR, "server", msg.getSender(),
+            Message statusMsg(MessageType::ERR_MSG, "server", msg.getSender(),
                             "User is offline: " + recipient);
             senderIt->second->sendMessage(statusMsg);
         }

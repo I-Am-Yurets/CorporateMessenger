@@ -1,5 +1,7 @@
 #include "NetworkClient.h"
 #include <iostream>
+#include "Message.h"
+#include <sstream>
 
 NetworkClient::NetworkClient(QObject *parent)
     : QObject(parent), connected_(false) {
@@ -182,7 +184,7 @@ void NetworkClient::handleMessage(const Message& msg) {
             }
             break;
             
-        case MessageType::ERROR:
+        case MessageType::ERR_MSG:
             if (msg.getContent().find("Username already exists") != std::string::npos) {
                 emit registerFailed(QString::fromStdString(msg.getContent()));
             } else if (msg.getContent().find("Invalid credentials") != std::string::npos) {

@@ -1,6 +1,7 @@
 #include "RegisterDialog.h"
 #include "ui_RegisterDialog.h"
 #include <QMessageBox>
+#include <QPushButton>
 
 RegisterDialog::RegisterDialog(NetworkClient* client, QWidget *parent)
     : QDialog(parent), ui(new Ui::RegisterDialog), client_(client) {

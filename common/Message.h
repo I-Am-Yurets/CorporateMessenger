@@ -19,7 +19,7 @@ enum class MessageType {
     RECEIVE_MESSAGE,    // Отримання повідомлення
     STATUS_UPDATE,      // Оновлення статусу
     SUCCESS,            // Успішна операція
-    ERROR               // Помилка
+    ERR_MSG
 };
 
 /**

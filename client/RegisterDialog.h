@@ -13,7 +13,7 @@ class RegisterDialog : public QDialog {
 
 public:
  explicit RegisterDialog(NetworkClient* client, QWidget *parent = nullptr);
- ~RegisterDialog() override;
+ ~RegisterDialog();
 
 private slots:
     void onRegisterClicked();

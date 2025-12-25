@@ -30,6 +30,8 @@ private slots:
     void onLogout();
     void onAbout();
 
+    void closeEvent(QCloseEvent *event) override;
+
 private:
     void updateUserList(const QStringList& users);
     void addMessageToChat(const QString& sender, const QString& message,

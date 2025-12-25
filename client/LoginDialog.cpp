@@ -1,5 +1,5 @@
 #include "LoginDialog.h"
-#include "ui_LoginDialog.ui"
+#include "ui_LoginDialog.h"
 #include "RegisterDialog.h"
 #include <QMessageBox>
 #include <QPushButton>

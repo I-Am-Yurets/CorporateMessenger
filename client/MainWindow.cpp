@@ -2,6 +2,8 @@
 #include "ui_MainWindow.h"
 #include <QMessageBox>
 #include <QCloseEvent>
+#include <QDateTime>
+#include <QTextCursor>
 
 MainWindow::MainWindow(NetworkClient* client, const QString& username,
                        QWidget *parent)

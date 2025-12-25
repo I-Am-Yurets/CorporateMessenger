@@ -91,7 +91,7 @@ void ClientSession::handleMessage(const Message& msg) {
                                "Registration successful");
                 sendMessage(response);
             } else {
-                Message response(MessageType::ERROR, "server", username,
+                Message response(MessageType::ERR_MSG, "server", username,
                                "Username already exists");
                 sendMessage(response);
             }
@@ -116,7 +116,7 @@ void ClientSession::handleMessage(const Message& msg) {
                 
                 std::cout << "User logged in: " << username << std::endl;
             } else {
-                Message response(MessageType::ERROR, "server", username,
+                Message response(MessageType::ERR_MSG, "server", username,
                                "Invalid credentials");
                 sendMessage(response);
             }
