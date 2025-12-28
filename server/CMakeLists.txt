@@ -1,3 +1,7 @@
+find_package(Qt6 REQUIRED COMPONENTS Core Network)
+
+set(CMAKE_AUTOMOC ON)
+
 add_executable(messenger_server
         main.cpp
         Server.h
@@ -9,17 +13,10 @@ add_executable(messenger_server
 )
 
 target_link_libraries(messenger_server PRIVATE
-        common
-        Boost::system
-        Boost::thread
+        Qt6::Core
+        Qt6::Network
 )
 
 target_include_directories(messenger_server PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/common
 )
-
-# Для Windows потрібні додаткові бібліотеки
-if(WIN32)
-    target_link_libraries(messenger_server PRIVATE ws2_32 wsock32)
-endif()

@@ -4,18 +4,21 @@
 #include "NetworkClient.h"
 
 int main(int argc, char *argv[]) {
+    // 1. ПЕРШИМ ділом створюємо об'єкт QApplication.
+    // Це запустить ініціалізацію мережі та графіки.
     QApplication app(argc, argv);
-    
-    app.setApplicationName("Corporate Messenger");
-    app.setOrganizationName("Your Company");
-    
+
+    // 2. ТЕПЕР можна безпечно налаштовувати шляхи
+    QCoreApplication::addLibraryPath(QCoreApplication::applicationDirPath());
+
+    // 3. Створюємо клієнта (тепер його сокет працюватиме коректно)
     NetworkClient client;
-    
+
     LoginDialog loginDialog(&client);
     if (loginDialog.exec() == QDialog::Accepted) {
         MainWindow mainWindow(&client, loginDialog.getUsername());
         mainWindow.show();
-        return QApplication::exec();
+        return app.exec();
     }
     
     return 0;

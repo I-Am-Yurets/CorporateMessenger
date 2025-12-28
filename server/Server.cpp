@@ -1,89 +1,87 @@
 #include "Server.h"
-#include <iostream>
+#include <QDebug>
 
-Server::Server(boost::asio::io_context& ioContext, short port)
-    : acceptor_(ioContext, tcp::endpoint(tcp::v4(), port)),
-      database_("users.db") {
-    doAccept();
+Server::Server(quint16 port, QObject *parent)
+    : QObject(parent)
+    , tcpServer(new QTcpServer(this))
+    , database("users.db")
+{
+    connect(tcpServer, &QTcpServer::newConnection, this, &Server::onNewConnection);
+
+    if (!tcpServer->listen(QHostAddress::Any, port)) {
+        qCritical() << "Unable to start server:" << tcpServer->errorString();
+        return;
+    }
+
+    qDebug() << "Server started on port" << port;
+}
+
+Server::~Server() {
+    tcpServer->close();
 }
 
 bool Server::registerUser(const User& user) {
-    return database_.registerUser(user);
+    return database.registerUser(user);
 }
 
-bool Server::authenticateUser(const std::string& username, 
-                               const std::string& password) {
-    return database_.authenticateUser(username, password);
+bool Server::authenticateUser(const QString& username, const QString& password) {
+    return database.authenticateUser(username, password);
 }
 
-void Server::addClient(const std::string& username,
-                       std::shared_ptr<ClientSession> session) {
-    std::lock_guard<std::mutex> lock(clientsMutex_);
-    clients_[username] = session;
-    database_.setUserOnline(username, true);
-    
-    std::cout << "Active clients: " << clients_.size() << std::endl;
+void Server::addClient(const QString& username, std::shared_ptr<ClientSession> session) {
+    QMutexLocker locker(&clientsMutex);
+    clients[username] = session;
+    database.setUserOnline(username, true);
+
+    qDebug() << "Active clients:" << clients.size();
 }
 
-void Server::removeClient(const std::string& username) {
-    std::lock_guard<std::mutex> lock(clientsMutex_);
-    clients_.erase(username);
-    database_.setUserOnline(username, false);
-    
-    std::cout << "Active clients: " << clients_.size() << std::endl;
+void Server::removeClient(const QString& username) {
+    QMutexLocker locker(&clientsMutex);
+    clients.remove(username);
+    database.setUserOnline(username, false);
+
+    qDebug() << "Active clients:" << clients.size();
 }
 
-std::vector<User> Server::getOnlineUsers() {
-    return database_.getOnlineUsers();
+QVector<User> Server::getOnlineUsers() {
+    return database.getOnlineUsers();
 }
 
-std::vector<User> Server::searchUsers(const std::string& query) {
-    return database_.searchUsers(query);
+QVector<User> Server::searchUsers(const QString& query) {
+    return database.searchUsers(query);
 }
 
-void Server::deliverMessage(const Message& msg) {
-    std::lock_guard<std::mutex> lock(clientsMutex_);
-    
-    std::string recipient = msg.getRecipient();
-    auto it = clients_.find(recipient);
-    
-    if (it != clients_.end()) {
+void Server::deliverMessage(const QString& sender, const QString& recipient,
+                           const QString& content) {
+    QMutexLocker locker(&clientsMutex);
+
+    auto it = clients.find(recipient);
+
+    if (it != clients.end()) {
         // Отримувач онлайн - доставляємо повідомлення
-        Message deliveryMsg(MessageType::RECEIVE_MESSAGE, 
-                           msg.getSender(), 
-                           msg.getRecipient(),
-                           msg.getContent());
-        it->second->sendMessage(deliveryMsg);
-        
-        std::cout << "Message delivered from " << msg.getSender() 
-                  << " to " << msg.getRecipient() << std::endl;
+        it.value()->sendMessage(sender, content);
+
+        qDebug() << "Message delivered from" << sender << "to" << recipient;
     } else {
-        // Отримувач офлайн - зберігаємо повідомлення (TODO)
-        std::cout << "Recipient offline: " << recipient << std::endl;
-        
+        // Отримувач офлайн
+        qDebug() << "Recipient offline:" << recipient;
+
         // Повідомляємо відправника про статус
-        auto senderIt = clients_.find(msg.getSender());
-        if (senderIt != clients_.end()) {
-            Message statusMsg(MessageType::ERR_MSG, "server", msg.getSender(),
-                            "User is offline: " + recipient);
-            senderIt->second->sendMessage(statusMsg);
+        auto senderIt = clients.find(sender);
+        if (senderIt != clients.end()) {
+            senderIt.value()->sendError("User is offline: " + recipient);
         }
     }
 }
 
-void Server::doAccept() {
-    acceptor_.async_accept(
-        [this](boost::system::error_code ec, tcp::socket socket) {
-            if (!ec) {
-                std::cout << "New connection from " 
-                         << socket.remote_endpoint().address().to_string() 
-                         << std::endl;
-                         
-                std::make_shared<ClientSession>(std::move(socket), this)->start();
-            } else {
-                std::cerr << "Accept error: " << ec.message() << std::endl;
-            }
-            
-            doAccept();
-        });
+void Server::onNewConnection() {
+    while (tcpServer->hasPendingConnections()) {
+        QTcpSocket* socket = tcpServer->nextPendingConnection();
+
+        qDebug() << "New connection from" << socket->peerAddress().toString();
+
+        auto session = std::make_shared<ClientSession>(socket, this);
+        session->start();
+    }
 }

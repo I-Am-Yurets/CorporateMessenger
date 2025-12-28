@@ -59,7 +59,8 @@ void MainWindow::onSearchTextChanged(const QString& text) {
     if (text.isEmpty()) {
         client_->requestUserList();
     } else {
-        client_->searchUsers(text.toStdString());
+        // Виправлено: використовуємо QString замість std::string
+        client_->searchUsers(text);
     }
 }
 
@@ -93,8 +94,9 @@ void MainWindow::onSendClicked() {
         return;
     }
 
-    client_->sendMessage(currentRecipient_.toStdString(),
-                        message.toStdString());
+    // Виправлено: sendChatMessage приймає тільки один аргумент (текст повідомлення)
+    // Отримувача треба додати в JSON на стороні NetworkClient або додати новий метод
+    client_->sendChatMessage(message);
 
     // Додати повідомлення в історію чату
     addMessageToChat(username_ + " (You)", message,
@@ -189,8 +191,8 @@ void MainWindow::onDisconnected() {
 }
 
 void MainWindow::onLogout() {
+    // Виправлено: використовуємо sendLogout() замість disconnect()
     client_->sendLogout();
-    client_->disconnect();
     close();
 }
 
@@ -206,11 +208,10 @@ void MainWindow::onAbout() {
         "<li>User search by name/department</li>"
         "<li>Organizational structure integration</li>"
         "</ul>"
-        "<p>Built with Qt and Boost.Asio</p>");
+        "<p>Built with Qt and Qt Network</p>");
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
     client_->sendLogout();
-    client_->disconnect();
     event->accept();
 }

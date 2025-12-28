@@ -1,42 +1,41 @@
-#ifndef CLIENT_SESSION_H
-#define CLIENT_SESSION_H
+#ifndef CLIENTSESSION_H
+#define CLIENTSESSION_H
 
-#include <boost/asio.hpp>
+#include <QObject>
+#include <QTcpSocket>
+#include <QJsonObject>
 #include <memory>
-#include <string>
-#include <queue>
-#include "Message.h"
-
-using boost::asio::ip::tcp;
 
 class Server;
 
-/**
- * @brief Клас для обробки сесії одного клієнта
- */
-class ClientSession : public std::enable_shared_from_this<ClientSession> {
+class ClientSession : public QObject, public std::enable_shared_from_this<ClientSession> {
+    Q_OBJECT
+
 public:
-    ClientSession(tcp::socket socket, Server* server);
+    explicit ClientSession(QTcpSocket* socket, Server* server, QObject *parent = nullptr);
+    ~ClientSession();
 
     void start();
-    void sendMessage(const Message& msg);
+    void sendMessage(const QString& sender, const QString& content);
+    void sendError(const QString& error);
 
-    std::string getUsername() const { return username_; }
-    bool isAuthenticated() const { return authenticated_; }
+    QString getUsername() const { return username; }
+    bool isAuthenticated() const { return authenticated; }
+
+private slots:
+    void onReadyRead();
+    void onDisconnected();
+    void onError(QAbstractSocket::SocketError error);
 
 private:
-    void doRead();
-    void doWrite();
-    void handleMessage(const Message& msg);
+    void handleMessage(const QJsonObject& json);
+    void sendResponse(const QJsonObject& json);
 
-    tcp::socket socket_;
-    Server* server_;
-    std::string username_;
-    bool authenticated_;
-
-    enum { max_length = 8192 };
-    char readBuffer_[max_length];
-    std::queue<std::string> writeQueue_;
+    QTcpSocket* socket;
+    Server* server;
+    QString username;
+    bool authenticated;
+    quint32 currentMessageSize;
 };
 
-#endif // CLIENT_SESSION_H
+#endif // CLIENTSESSION_H

@@ -1,9 +1,10 @@
 #include "Database.h"
-#include <iostream>
-#include <sstream>
-#include <algorithm>
+#include <QFile>
+#include <QTextStream>
+#include <QCryptographicHash>
+#include <QDebug>
 
-Database::Database(const std::string& filename) : filename_(filename) {
+Database::Database(const QString& filename) : filename(filename) {
     load();
 }
 
@@ -12,185 +13,178 @@ Database::~Database() {
 }
 
 bool Database::registerUser(const User& user) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    if (users_.find(user.username) != users_.end()) {
-        return false; // Користувач вже існує
+    QMutexLocker locker(&mutex);
+
+    if (users.contains(user.username)) {
+        return false;
     }
-    
+
     User newUser = user;
     newUser.password = hashPassword(user.password);
     newUser.isOnline = false;
-    
-    users_[user.username] = newUser;
+
+    users[user.username] = newUser;
     save();
     return true;
 }
 
-bool Database::authenticateUser(const std::string& username, 
-                                 const std::string& password) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    auto it = users_.find(username);
-    if (it == users_.end()) {
+bool Database::authenticateUser(const QString& username, const QString& password) {
+    QMutexLocker locker(&mutex);
+
+    if (!users.contains(username)) {
         return false;
     }
-    
-    return it->second.password == hashPassword(password);
+
+    return users[username].password == hashPassword(password);
 }
 
-bool Database::userExists(const std::string& username) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return users_.find(username) != users_.end();
+bool Database::userExists(const QString& username) {
+    QMutexLocker locker(&mutex);
+    return users.contains(username);
 }
 
-User Database::getUser(const std::string& username) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    auto it = users_.find(username);
-    if (it != users_.end()) {
-        return it->second;
+User Database::getUser(const QString& username) {
+    QMutexLocker locker(&mutex);
+
+    if (users.contains(username)) {
+        return users[username];
     }
     return User();
 }
 
-std::vector<User> Database::getAllUsers() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    std::vector<User> result;
-    for (const auto& pair : users_) {
-        User u = pair.second;
-        u.password = ""; // Не передаємо пароль
-        result.push_back(u);
+QVector<User> Database::getAllUsers() {
+    QMutexLocker locker(&mutex);
+
+    QVector<User> result;
+    for (auto it = users.begin(); it != users.end(); ++it) {
+        User u = it.value();
+        u.password = "";
+        result.append(u);
     }
     return result;
 }
 
-std::vector<User> Database::getOnlineUsers() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    std::vector<User> result;
-    for (const auto& pair : users_) {
-        if (pair.second.isOnline) {
-            User u = pair.second;
+QVector<User> Database::getOnlineUsers() {
+    QMutexLocker locker(&mutex);
+
+    QVector<User> result;
+    for (auto it = users.begin(); it != users.end(); ++it) {
+        if (it.value().isOnline) {
+            User u = it.value();
             u.password = "";
-            result.push_back(u);
+            result.append(u);
         }
     }
     return result;
 }
 
-std::vector<User> Database::searchUsers(const std::string& query) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    std::vector<User> result;
-    std::string lowerQuery = query;
-    std::transform(lowerQuery.begin(), lowerQuery.end(), 
-                   lowerQuery.begin(), ::tolower);
-    
-    for (const auto& pair : users_) {
-        std::string lowerUsername = pair.second.username;
-        std::string lowerFullName = pair.second.fullName;
-        std::string lowerDept = pair.second.department;
-        
-        std::transform(lowerUsername.begin(), lowerUsername.end(), 
-                       lowerUsername.begin(), ::tolower);
-        std::transform(lowerFullName.begin(), lowerFullName.end(), 
-                       lowerFullName.begin(), ::tolower);
-        std::transform(lowerDept.begin(), lowerDept.end(), 
-                       lowerDept.begin(), ::tolower);
-        
-        if (lowerUsername.find(lowerQuery) != std::string::npos ||
-            lowerFullName.find(lowerQuery) != std::string::npos ||
-            lowerDept.find(lowerQuery) != std::string::npos) {
-            User u = pair.second;
+QVector<User> Database::searchUsers(const QString& query) {
+    QMutexLocker locker(&mutex);
+
+    QVector<User> result;
+    QString lowerQuery = query.toLower();
+
+    for (auto it = users.begin(); it != users.end(); ++it) {
+        const User& user = it.value();
+        QString lowerUsername = user.username.toLower();
+        QString lowerFullName = user.fullName.toLower();
+        QString lowerDept = user.department.toLower();
+
+        if (lowerUsername.contains(lowerQuery) ||
+            lowerFullName.contains(lowerQuery) ||
+            lowerDept.contains(lowerQuery)) {
+            User u = user;
             u.password = "";
-            result.push_back(u);
+            result.append(u);
         }
     }
     return result;
 }
 
-std::vector<User> Database::getUsersByDepartment(const std::string& department) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    std::vector<User> result;
-    for (const auto& pair : users_) {
-        if (pair.second.department == department) {
-            User u = pair.second;
+QVector<User> Database::getUsersByDepartment(const QString& department) {
+    QMutexLocker locker(&mutex);
+
+    QVector<User> result;
+    for (auto it = users.begin(); it != users.end(); ++it) {
+        if (it.value().department == department) {
+            User u = it.value();
             u.password = "";
-            result.push_back(u);
+            result.append(u);
         }
     }
     return result;
 }
 
-void Database::setUserOnline(const std::string& username, bool online) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    auto it = users_.find(username);
-    if (it != users_.end()) {
-        it->second.isOnline = online;
+void Database::setUserOnline(const QString& username, bool online) {
+    QMutexLocker locker(&mutex);
+
+    if (users.contains(username)) {
+        users[username].isOnline = online;
     }
 }
 
-bool Database::isUserOnline(const std::string& username) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    auto it = users_.find(username);
-    if (it != users_.end()) {
-        return it->second.isOnline;
+bool Database::isUserOnline(const QString& username) {
+    QMutexLocker locker(&mutex);
+
+    if (users.contains(username)) {
+        return users[username].isOnline;
     }
     return false;
 }
 
 void Database::save() {
-    std::ofstream file(filename_);
-    if (!file.is_open()) {
-        std::cerr << "Cannot open file for writing: " << filename_ << std::endl;
+    QFile file(filename);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qWarning() << "Cannot open file for writing:" << filename;
         return;
     }
-    
-    for (const auto& pair : users_) {
-        const User& u = pair.second;
-        file << u.username << "|"
-             << u.password << "|"
-             << u.fullName << "|"
-             << u.department << "|"
-             << u.position << "\n";
+
+    QTextStream out(&file);
+    for (auto it = users.begin(); it != users.end(); ++it) {
+        const User& user = it.value();
+        out << user.username << "|"
+            << user.password << "|"
+            << user.fullName << "|"
+            << user.department << "|"
+            << user.position << "\n";
     }
-    
+
     file.close();
 }
 
 void Database::load() {
-    std::ifstream file(filename_);
-    if (!file.is_open()) {
-        std::cout << "Database file not found. Creating new one." << std::endl;
+    QFile file(filename);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qDebug() << "Database file not found. Creating new one.";
         return;
     }
-    
-    std::string line;
-    while (std::getline(file, line)) {
-        std::istringstream iss(line);
-        User user;
-        
-        std::getline(iss, user.username, '|');
-        std::getline(iss, user.password, '|');
-        std::getline(iss, user.fullName, '|');
-        std::getline(iss, user.department, '|');
-        std::getline(iss, user.position, '|');
-        user.isOnline = false;
-        
-        users_[user.username] = user;
+
+    QTextStream in(&file);
+    while (!in.atEnd()) {
+        QString line = in.readLine();
+        QStringList parts = line.split('|');
+
+        if (parts.size() >= 5) {
+            User user;
+            user.username = parts[0];
+            user.password = parts[1];
+            user.fullName = parts[2];
+            user.department = parts[3];
+            user.position = parts[4];
+            user.isOnline = false;
+
+            users[user.username] = user;
+        }
     }
-    
+
     file.close();
-    std::cout << "Loaded " << users_.size() << " users from database." << std::endl;
+    qDebug() << "Loaded" << users.size() << "users from database.";
 }
 
-std::string Database::hashPassword(const std::string& password) {
-    // Проста хеш-функція (для продакшн використовуйте bcrypt, argon2 тощо)
-    std::hash<std::string> hasher;
-    return std::to_string(hasher(password + "salt_secret_key"));
+QString Database::hashPassword(const QString& password) {
+    QByteArray hash = QCryptographicHash::hash(
+        (password + "salt_secret_key").toUtf8(),
+        QCryptographicHash::Sha256
+    );
+    return QString(hash.toHex());
 }

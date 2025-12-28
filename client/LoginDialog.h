@@ -13,20 +13,24 @@ class LoginDialog : public QDialog {
 
 public:
  explicit LoginDialog(NetworkClient* client, QWidget *parent = nullptr);
- ~LoginDialog() override;
+ ~LoginDialog();
 
- [[nodiscard]] QString getUsername() const;
+ QString getUsername() const;
 
 private slots:
     void onLoginClicked();
  void onRegisterClicked();
+ void onConnected();
+ void onConnectionError(QString error);
  void onLoginSuccess();
  void onLoginFailed(QString reason);
 
 private:
- Ui::LoginDialog *ui{};
+ Ui::LoginDialog *ui;
  NetworkClient* client_;
  QString username_;
+ QString pendingUsername_;
+ QString pendingPassword_;
 };
 
 #endif // LOGINDIALOG_H

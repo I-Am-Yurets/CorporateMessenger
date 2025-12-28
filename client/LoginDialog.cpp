@@ -12,8 +12,11 @@ LoginDialog::LoginDialog(NetworkClient* client, QWidget *parent)
     connect(ui->registerButton, &QPushButton::clicked, this, &LoginDialog::onRegisterClicked);
     connect(ui->cancelButton, &QPushButton::clicked, this, &QDialog::reject);
     
-    connect(client_, &NetworkClient::loginSuccess, this, &LoginDialog::onLoginSuccess);
+    // Виправлені назви сигналів
+    connect(client_, &NetworkClient::loginSuccessful, this, &LoginDialog::onLoginSuccess);
     connect(client_, &NetworkClient::loginFailed, this, &LoginDialog::onLoginFailed);
+    connect(client_, &NetworkClient::connected, this, &LoginDialog::onConnected);
+    connect(client_, &NetworkClient::connectionError, this, &LoginDialog::onConnectionError);
 }
 
 LoginDialog::~LoginDialog() {
@@ -26,35 +29,49 @@ QString LoginDialog::getUsername() const {
 
 void LoginDialog::onLoginClicked() {
     QString server = ui->serverEdit->text();
-    QString port = ui->portEdit->text();
+    QString portStr = ui->portEdit->text();
     QString username = ui->usernameEdit->text();
     QString password = ui->passwordEdit->text();
-    
+
     if (username.isEmpty() || password.isEmpty()) {
         QMessageBox::warning(this, "Error", "Please enter username and password");
         return;
     }
-    
+
+    bool ok;
+    quint16 port = portStr.toUShort(&ok);
+    if (!ok) {
+        QMessageBox::warning(this, "Error", "Invalid port number");
+        return;
+    }
+
     ui->loginButton->setEnabled(false);
     ui->loginButton->setText("Connecting...");
-    
-    if (!client_->isConnected()) {
-        if (!client_->connectToServer(server.toStdString(), port.toStdString())) {
-            QMessageBox::critical(this, "Connection Error", 
-                                 "Cannot connect to server");
-            ui->loginButton->setEnabled(true);
-            ui->loginButton->setText("Login");
-            return;
-        }
-    }
-    
+
     username_ = username;
-    client_->sendLogin(username.toStdString(), password.toStdString());
+    pendingUsername_ = username;
+    pendingPassword_ = password;
+
+    // Підключаємось до сервера
+    client_->connectToServer(server, port);
 }
 
 void LoginDialog::onRegisterClicked() {
     RegisterDialog dialog(client_, this);
     dialog.exec();
+}
+
+void LoginDialog::onConnected() {
+    // Після підключення відправляємо логін
+    ui->loginButton->setText("Logging in...");
+    client_->loginUser(pendingUsername_, pendingPassword_);
+}
+
+void LoginDialog::onConnectionError(QString error) {
+    QMessageBox::critical(this, "Connection Error",
+                         "Cannot connect to server: " + error);
+    ui->loginButton->setEnabled(true);
+    ui->loginButton->setText("Login");
 }
 
 void LoginDialog::onLoginSuccess() {

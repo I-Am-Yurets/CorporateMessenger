@@ -1,179 +1,227 @@
 #include "ClientSession.h"
 #include "Server.h"
-#include <iostream>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QDataStream>
+#include <QDateTime>
+#include <QDebug>
 
-ClientSession::ClientSession(tcp::socket socket, Server* server)
-    : socket_(std::move(socket)), server_(server), authenticated_(false) {
+ClientSession::ClientSession(QTcpSocket* socket, Server* server, QObject *parent)
+    : QObject(parent)
+    , socket(socket)
+    , server(server)
+    , authenticated(false)
+    , currentMessageSize(0)
+{
+    socket->setParent(this);
+
+    connect(socket, &QTcpSocket::readyRead, this, &ClientSession::onReadyRead);
+    connect(socket, &QTcpSocket::disconnected, this, &ClientSession::onDisconnected);
+    connect(socket, &QTcpSocket::errorOccurred, this, &ClientSession::onError);
+}
+
+ClientSession::~ClientSession() {
+    qDebug() << "ClientSession destroyed for user:" << username;
 }
 
 void ClientSession::start() {
-    doRead();
+    qDebug() << "Client session started";
 }
 
-void ClientSession::sendMessage(const Message& msg) {
-    std::string data = msg.serialize() + "\n";
-    
-    auto self(shared_from_this());
-    boost::asio::async_write(socket_,
-        boost::asio::buffer(data),
-        [this, self](boost::system::error_code ec, std::size_t /*length*/) {
-            if (ec) {
-                std::cerr << "Write error: " << ec.message() << std::endl;
-            }
-        });
+void ClientSession::sendMessage(const QString& sender, const QString& content) {
+    QJsonObject json;
+    json["type"] = "message";
+    json["sender"] = sender;
+    json["content"] = content;
+    json["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+
+    sendResponse(json);
 }
 
-void ClientSession::doRead() {
-    auto self(shared_from_this());
-    socket_.async_read_some(boost::asio::buffer(readBuffer_, max_length),
-        [this, self](boost::system::error_code ec, std::size_t length) {
-            if (!ec) {
-                std::string data(readBuffer_, length);
-                
-                // Обробка кількох повідомлень, розділених \n
-                size_t pos = 0;
-                while ((pos = data.find('\n')) != std::string::npos) {
-                    std::string msgStr = data.substr(0, pos);
-                    data.erase(0, pos + 1);
-                    
-                    try {
-                        Message msg = Message::deserialize(msgStr);
-                        handleMessage(msg);
-                    } catch (const std::exception& e) {
-                        std::cerr << "Error parsing message: " << e.what() << std::endl;
-                    }
-                }
-                
-                doRead();
-            } else {
-                std::cout << "Client disconnected: " << username_ << std::endl;
-                if (authenticated_) {
-                    server_->removeClient(username_);
-                }
-            }
-        });
+void ClientSession::sendError(const QString& error) {
+    QJsonObject json;
+    json["type"] = "error";
+    json["message"] = error;
+
+    sendResponse(json);
 }
 
-void ClientSession::doWrite() {
-    auto self(shared_from_this());
-    if (!writeQueue_.empty()) {
-        boost::asio::async_write(socket_,
-            boost::asio::buffer(writeQueue_.front()),
-            [this, self](boost::system::error_code ec, std::size_t /*length*/) {
-                if (!ec) {
-                    writeQueue_.pop();
-                    if (!writeQueue_.empty()) {
-                        doWrite();
-                    }
-                }
-            });
+void ClientSession::sendResponse(const QJsonObject& json) {
+    QJsonDocument doc(json);
+    QByteArray data = doc.toJson(QJsonDocument::Compact);
+
+    // Додаємо розмір повідомлення (4 байти)
+    QByteArray sizeData;
+    QDataStream sizeStream(&sizeData, QIODevice::WriteOnly);
+    sizeStream.setByteOrder(QDataStream::BigEndian);
+    sizeStream << static_cast<quint32>(data.size());
+
+    qDebug() << "Sending response:" << data;
+
+    socket->write(sizeData);
+    socket->write(data);
+    socket->flush();
+}
+
+void ClientSession::onReadyRead() {
+    while (socket->bytesAvailable() >= 4) {
+        // Читаємо розмір повідомлення
+        if (currentMessageSize == 0) {
+            QByteArray sizeData = socket->read(4);
+            QDataStream sizeStream(sizeData);
+            sizeStream.setByteOrder(QDataStream::BigEndian);
+            sizeStream >> currentMessageSize;
+            qDebug() << "Message size:" << currentMessageSize;
+        }
+
+        // Перевіряємо чи є достатньо даних
+        if (socket->bytesAvailable() < currentMessageSize) {
+            qDebug() << "Waiting for more data...";
+            return;
+        }
+
+        // Читаємо повідомлення
+        QByteArray data = socket->read(currentMessageSize);
+        currentMessageSize = 0;
+
+        qDebug() << "Received message:" << data;
+
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+        if (!doc.isObject()) {
+            qWarning() << "Invalid JSON received";
+            continue;
+        }
+
+        handleMessage(doc.object());
     }
 }
 
-void ClientSession::handleMessage(const Message& msg) {
-    switch (msg.getType()) {
-        case MessageType::REGISTER: {
-            // Формат: username|password|fullname|department|position
-            std::string content = msg.getContent();
-            std::istringstream iss(content);
-            std::string username, password, fullname, department, position;
-            
-            std::getline(iss, username, '|');
-            std::getline(iss, password, '|');
-            std::getline(iss, fullname, '|');
-            std::getline(iss, department, '|');
-            std::getline(iss, position, '|');
-            
-            User user(username, password, fullname, department, position);
-            
-            if (server_->registerUser(user)) {
-                Message response(MessageType::SUCCESS, "server", username, 
-                               "Registration successful");
-                sendMessage(response);
-            } else {
-                Message response(MessageType::ERR_MSG, "server", username,
-                               "Username already exists");
-                sendMessage(response);
-            }
-            break;
+void ClientSession::handleMessage(const QJsonObject& json) {
+    QString type = json["type"].toString();
+
+    if (type == "register") {
+        QString username = json["username"].toString();
+        QString password = json["password"].toString();
+        QString fullName = json["full_name"].toString();
+        QString department = json["department"].toString();
+        QString position = json["position"].toString();
+
+        User user(username, password, fullName, department, position);
+
+        QJsonObject response;
+        response["type"] = "register_response";
+
+        if (server->registerUser(user)) {
+            response["success"] = true;
+            response["message"] = "Registration successful";
+            qDebug() << "User registered:" << username;
+        } else {
+            response["success"] = false;
+            response["message"] = "Username already exists";
+            qDebug() << "Registration failed: username exists";
         }
-        
-        case MessageType::LOGIN: {
-            // Формат: username|password
-            std::string content = msg.getContent();
-            size_t pos = content.find('|');
-            std::string username = content.substr(0, pos);
-            std::string password = content.substr(pos + 1);
-            
-            if (server_->authenticateUser(username, password)) {
-                username_ = username;
-                authenticated_ = true;
-                server_->addClient(username, shared_from_this());
-                
-                Message response(MessageType::SUCCESS, "server", username,
-                               "Login successful");
-                sendMessage(response);
-                
-                std::cout << "User logged in: " << username << std::endl;
-            } else {
-                Message response(MessageType::ERR_MSG, "server", username,
-                               "Invalid credentials");
-                sendMessage(response);
-            }
-            break;
-        }
-        
-        case MessageType::LOGOUT: {
-            if (authenticated_) {
-                server_->removeClient(username_);
-                authenticated_ = false;
-                std::cout << "User logged out: " << username_ << std::endl;
-            }
-            break;
-        }
-        
-        case MessageType::USER_LIST: {
-            if (authenticated_) {
-                auto users = server_->getOnlineUsers();
-                std::ostringstream oss;
-                for (const auto& user : users) {
-                    if (user.username != username_) { // Не включаємо себе
-                        oss << user.username << "|" << user.fullName << "|"
-                            << user.department << "|" << user.position << ";";
-                    }
-                }
-                Message response(MessageType::USER_LIST, "server", username_,
-                               oss.str());
-                sendMessage(response);
-            }
-            break;
-        }
-        
-        case MessageType::SEARCH_USER: {
-            if (authenticated_) {
-                auto users = server_->searchUsers(msg.getContent());
-                std::ostringstream oss;
-                for (const auto& user : users) {
-                    oss << user.username << "|" << user.fullName << "|"
-                        << user.department << "|" << user.position << "|"
-                        << (user.isOnline ? "online" : "offline") << ";";
-                }
-                Message response(MessageType::SEARCH_USER, "server", username_,
-                               oss.str());
-                sendMessage(response);
-            }
-            break;
-        }
-        
-        case MessageType::SEND_MESSAGE: {
-            if (authenticated_) {
-                server_->deliverMessage(msg);
-            }
-            break;
-        }
-        
-        default:
-            std::cerr << "Unknown message type" << std::endl;
-            break;
+
+        sendResponse(response);
     }
+    else if (type == "login") {
+        QString user = json["username"].toString();
+        QString password = json["password"].toString();
+
+        QJsonObject response;
+        response["type"] = "login_response";
+
+        if (server->authenticateUser(user, password)) {
+            username = user;
+            authenticated = true;
+            server->addClient(username, shared_from_this());
+
+            response["success"] = true;
+            response["message"] = "Login successful";
+
+            qDebug() << "User logged in:" << username;
+        } else {
+            response["success"] = false;
+            response["message"] = "Invalid credentials";
+
+            qDebug() << "Login failed for:" << user;
+        }
+
+        sendResponse(response);
+    }
+    else if (type == "logout") {
+        if (authenticated) {
+            server->removeClient(username);
+            authenticated = false;
+            qDebug() << "User logged out:" << username;
+        }
+    }
+    else if (type == "user_list_request") {
+        if (authenticated) {
+            QVector<User> users = server->getOnlineUsers();
+            QJsonArray usersArray;
+
+            for (const User& user : users) {
+                if (user.username != username) { // Не включаємо себе
+                    QString userStr = QString("%1|%2|%3|%4|online")
+                        .arg(user.username)
+                        .arg(user.fullName)
+                        .arg(user.department)
+                        .arg(user.position);
+                    usersArray.append(userStr);
+                }
+            }
+
+            QJsonObject response;
+            response["type"] = "user_list";
+            response["users"] = usersArray;
+
+            sendResponse(response);
+        }
+    }
+    else if (type == "search_users") {
+        if (authenticated) {
+            QString query = json["query"].toString();
+            QVector<User> users = server->searchUsers(query);
+            QJsonArray resultsArray;
+
+            for (const User& user : users) {
+                QString userStr = QString("%1|%2|%3|%4|%5")
+                    .arg(user.username)
+                    .arg(user.fullName)
+                    .arg(user.department)
+                    .arg(user.position)
+                    .arg(user.isOnline ? "online" : "offline");
+                resultsArray.append(userStr);
+            }
+
+            QJsonObject response;
+            response["type"] = "search_results";
+            response["results"] = resultsArray;
+
+            sendResponse(response);
+        }
+    }
+    else if (type == "message") {
+        if (authenticated) {
+            QString content = json["content"].toString();
+            QString recipient = json["recipient"].toString();
+
+            server->deliverMessage(username, recipient, content);
+        }
+    }
+}
+
+void ClientSession::onDisconnected() {
+    qDebug() << "Client disconnected:" << username;
+
+    if (authenticated) {
+        server->removeClient(username);
+    }
+
+    deleteLater();
+}
+
+void ClientSession::onError(QAbstractSocket::SocketError error) {
+    qWarning() << "Socket error:" << error << socket->errorString();
 }

@@ -1,4 +1,5 @@
 # 1. Налаштування vcpkg (має бути на самому початку)
+add_definitions(-D_WIN32_WINNT=0x0601)
 set(VCPKG_APPLOCAL_DEPS ON)
 cmake_minimum_required(VERSION 3.20)
 project(corporate_messenger)
@@ -29,6 +30,7 @@ target_link_libraries(messenger_client PRIVATE
         common
         Qt6::Core Qt6::Widgets Qt6::Network
         Boost::system Boost::thread
+        ws2_32
 )
 
 # 6. Шляхи до заголовків
@@ -38,10 +40,14 @@ target_include_directories(messenger_client PRIVATE
         ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-# 7. Специфічні налаштування для Windows
 if(WIN32)
-    # Потрібно для роботи Boost.Asio
-    target_compile_definitions(messenger_client PRIVATE _WIN32_WINNT=0x0A00)
-    # Лінкування системної бібліотеки сокетів
+    add_custom_command(TARGET messenger_client POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "D:/dev/vcpkg/installed/x64-windows/Qt6/plugins/platforms"
+            "$<TARGET_FILE_DIR:messenger_client>/platforms"
+    )
+endif()
+
+if(WIN32)
     target_link_libraries(messenger_client PRIVATE ws2_32)
 endif()

@@ -1,46 +1,45 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-#include <boost/asio.hpp>
-#include <map>
+#include <QObject>
+#include <QTcpServer>
+#include <QMap>
+#include <QMutex>
 #include <memory>
-#include <mutex>
 #include "ClientSession.h"
 #include "Database.h"
-#include "Message.h"
 
-using boost::asio::ip::tcp;
+class Server : public QObject {
+    Q_OBJECT
 
-/**
- * @brief Основний клас сервера месенджера
- */
-class Server {
 public:
-    Server(boost::asio::io_context& ioContext, short port);
+    explicit Server(quint16 port, QObject *parent = nullptr);
+    ~Server();
 
     // Управління користувачами
     bool registerUser(const User& user);
-    bool authenticateUser(const std::string& username, const std::string& password);
+    bool authenticateUser(const QString& username, const QString& password);
 
     // Управління клієнтами
-    void addClient(const std::string& username,
-                   std::shared_ptr<ClientSession> session);
-    void removeClient(const std::string& username);
+    void addClient(const QString& username, std::shared_ptr<ClientSession> session);
+    void removeClient(const QString& username);
 
     // Отримання інформації
-    std::vector<User> getOnlineUsers();
-    std::vector<User> searchUsers(const std::string& query);
+    QVector<User> getOnlineUsers();
+    QVector<User> searchUsers(const QString& query);
 
     // Доставка повідомлень
-    void deliverMessage(const Message& msg);
+    void deliverMessage(const QString& sender, const QString& recipient,
+                       const QString& content);
+
+private slots:
+    void onNewConnection();
 
 private:
-    void doAccept();
-
-    tcp::acceptor acceptor_;
-    Database database_;
-    std::map<std::string, std::shared_ptr<ClientSession>> clients_;
-    std::mutex clientsMutex_;
+    QTcpServer* tcpServer;
+    Database database;
+    QMap<QString, std::shared_ptr<ClientSession>> clients;
+    QMutex clientsMutex;
 };
 
 #endif // SERVER_H

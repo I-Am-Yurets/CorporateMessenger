@@ -1,248 +1,231 @@
 #include "NetworkClient.h"
-#include <iostream>
-#include "Message.h"
-#include <sstream>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QHostAddress>
+#include <QDebug>
 
 NetworkClient::NetworkClient(QObject *parent)
-    : QObject(parent), connected_(false) {
+    : QObject(parent)
+    , socket(nullptr)
+{
+    qDebug() << "NetworkClient created";
 }
 
 NetworkClient::~NetworkClient() {
-    disconnect();
-}
-
-bool NetworkClient::connectToServer(const std::string& host, const std::string& port) {
-    try {
-        tcp::resolver resolver(ioContext_);
-        auto endpoints = resolver.resolve(host, port);
-        
-        socket_ = std::make_unique<tcp::socket>(ioContext_);
-        boost::asio::connect(*socket_, endpoints);
-        
-        connected_ = true;
-        
-        // Запустити потік для обробки IO
-        ioThread_ = std::make_unique<std::thread>([this]() {
-            runIoContext();
-        });
-        
-        doRead();
-        
-        emit connected();
-        return true;
-        
-    } catch (std::exception& e) {
-        std::cerr << "Connection error: " << e.what() << std::endl;
-        emit errorOccurred(QString("Connection failed: %1").arg(e.what()));
-        return false;
+    if (socket && socket->state() == QAbstractSocket::ConnectedState) {
+        socket->disconnectFromHost();
+    }
+    if (socket) {
+        socket->deleteLater();
     }
 }
 
-void NetworkClient::disconnect() {
-    if (connected_) {
-        connected_ = false;
-        
-        if (socket_) {
-            boost::system::error_code ec;
-            socket_->close(ec);
-        }
-        
-        ioContext_.stop();
-        
-        if (ioThread_ && ioThread_->joinable()) {
-            ioThread_->join();
-        }
-        
-        emit disconnected();
+void NetworkClient::connectToServer(const QString& host, quint16 port) {
+    qDebug() << "Connecting to" << host << ":" << port;
+
+    // Створюємо новий сокет при кожному підключенні
+    if (socket) {
+        socket->abort();
+        socket->deleteLater();
+        socket = nullptr;
     }
+
+    socket = new QTcpSocket(this);
+
+    qDebug() << "New socket created";
+
+    // Підключаємо сигнали
+    connect(socket, &QTcpSocket::connected, this, &NetworkClient::onConnected, Qt::UniqueConnection);
+    connect(socket, &QTcpSocket::disconnected, this, &NetworkClient::onDisconnected, Qt::UniqueConnection);
+    connect(socket, &QTcpSocket::readyRead, this, &NetworkClient::onReadyRead, Qt::UniqueConnection);
+    connect(socket, &QTcpSocket::errorOccurred, this, &NetworkClient::onError, Qt::UniqueConnection);
+
+    serverHost = host;
+    serverPort = port;
+
+    qDebug() << "Attempting to connect to" << host << port;
+    socket->connectToHost(host, port);
+
+    qDebug() << "State after connectToHost:" << socket->state();
 }
 
-void NetworkClient::sendRegister(const std::string& username, const std::string& password,
-                                 const std::string& fullname, const std::string& department,
-                                 const std::string& position) {
-    std::ostringstream oss;
-    oss << username << "|" << password << "|" << fullname << "|"
-        << department << "|" << position;
-    
-    Message msg(MessageType::REGISTER, "", "", oss.str());
-    
-    std::string data = msg.serialize() + "\n";
-    
-    std::lock_guard<std::mutex> lock(writeMutex_);
-    writeQueue_.push(data);
-    doWrite();
+void NetworkClient::registerUser(const QString& username, const QString& password,
+                                   const QString& fullName, const QString& department,
+                                   const QString& position) {
+    qDebug() << "Registering user:" << username;
+
+    QJsonObject json;
+    json["type"] = "register";
+    json["username"] = username;
+    json["password"] = password;
+    json["full_name"] = fullName;
+    json["department"] = department;
+    json["position"] = position;
+
+    sendMessage(json);
 }
 
-void NetworkClient::sendLogin(const std::string& username, const std::string& password) {
-    username_ = username;
-    
-    std::string content = username + "|" + password;
-    Message msg(MessageType::LOGIN, username, "", content);
-    
-    std::string data = msg.serialize() + "\n";
-    
-    std::lock_guard<std::mutex> lock(writeMutex_);
-    writeQueue_.push(data);
-    doWrite();
+void NetworkClient::loginUser(const QString& username, const QString& password) {
+    qDebug() << "Logging in user:" << username;
+
+    QJsonObject json;
+    json["type"] = "login";
+    json["username"] = username;
+    json["password"] = password;
+
+    sendMessage(json);
 }
 
-void NetworkClient::sendLogout() {
-    Message msg(MessageType::LOGOUT, username_, "", "");
-    
-    std::string data = msg.serialize() + "\n";
-    
-    std::lock_guard<std::mutex> lock(writeMutex_);
-    writeQueue_.push(data);
-    doWrite();
+void NetworkClient::sendChatMessage(const QString& message) {
+    QJsonObject json;
+    json["type"] = "message";
+    json["content"] = message;
+
+    sendMessage(json);
 }
 
 void NetworkClient::requestUserList() {
-    Message msg(MessageType::USER_LIST, username_, "", "");
-    
-    std::string data = msg.serialize() + "\n";
-    
-    std::lock_guard<std::mutex> lock(writeMutex_);
-    writeQueue_.push(data);
-    doWrite();
+    QJsonObject json;
+    json["type"] = "user_list_request";
+
+    sendMessage(json);
 }
 
-void NetworkClient::searchUsers(const std::string& query) {
-    Message msg(MessageType::SEARCH_USER, username_, "", query);
-    
-    std::string data = msg.serialize() + "\n";
-    
-    std::lock_guard<std::mutex> lock(writeMutex_);
-    writeQueue_.push(data);
-    doWrite();
+void NetworkClient::searchUsers(const QString& query) {
+    QJsonObject json;
+    json["type"] = "search_users";
+    json["query"] = query;
+
+    sendMessage(json);
 }
 
-void NetworkClient::sendMessage(const std::string& recipient, const std::string& content) {
-    Message msg(MessageType::SEND_MESSAGE, username_, recipient, content);
-    
-    std::string data = msg.serialize() + "\n";
-    
-    std::lock_guard<std::mutex> lock(writeMutex_);
-    writeQueue_.push(data);
-    doWrite();
+void NetworkClient::sendLogout() {
+    QJsonObject json;
+    json["type"] = "logout";
+
+    sendMessage(json);
 }
 
-void NetworkClient::doRead() {
-    if (!socket_ || !connected_) return;
-    
-    socket_->async_read_some(boost::asio::buffer(readBuffer_, max_length),
-        [this](boost::system::error_code ec, std::size_t length) {
-            if (!ec) {
-                std::string data(readBuffer_, length);
-                
-                size_t pos = 0;
-                while ((pos = data.find('\n')) != std::string::npos) {
-                    std::string msgStr = data.substr(0, pos);
-                    data.erase(0, pos + 1);
-                    
-                    try {
-                        Message msg = Message::deserialize(msgStr);
-                        handleMessage(msg);
-                    } catch (const std::exception& e) {
-                        std::cerr << "Error parsing message: " << e.what() << std::endl;
-                    }
-                }
-                
-                doRead();
+void NetworkClient::sendMessage(const QJsonObject& json) {
+    if (!socket || socket->state() != QAbstractSocket::ConnectedState) {
+        qWarning() << "Cannot send message: not connected";
+        return;
+    }
+
+    QJsonDocument doc(json);
+    QByteArray data = doc.toJson(QJsonDocument::Compact);
+
+    // Додаємо розмір повідомлення на початок (4 байти)
+    QByteArray sizeData;
+    QDataStream sizeStream(&sizeData, QIODevice::WriteOnly);
+    sizeStream.setByteOrder(QDataStream::BigEndian);
+    sizeStream << static_cast<quint32>(data.size());
+
+    qDebug() << "Sending message:" << data;
+    socket->write(sizeData);
+    socket->write(data);
+    socket->flush();
+}
+
+void NetworkClient::onConnected() {
+    qDebug() << "Successfully connected to server!";
+    qDebug() << "Local address:" << socket->localAddress().toString();
+    qDebug() << "Local port:" << socket->localPort();
+    qDebug() << "Peer address:" << socket->peerAddress().toString();
+    qDebug() << "Peer port:" << socket->peerPort();
+    emit connected();
+}
+
+void NetworkClient::onDisconnected() {
+    qDebug() << "Disconnected from server";
+    emit disconnected();
+}
+
+void NetworkClient::onReadyRead() {
+    if (!socket) return;
+
+    qDebug() << "Data available:" << socket->bytesAvailable() << "bytes";
+
+    while (socket->bytesAvailable() >= 4) {
+        // Читаємо розмір повідомлення
+        if (currentMessageSize == 0) {
+            QByteArray sizeData = socket->read(4);
+            QDataStream sizeStream(sizeData);
+            sizeStream.setByteOrder(QDataStream::BigEndian);
+            sizeStream >> currentMessageSize;
+            qDebug() << "Message size:" << currentMessageSize;
+        }
+
+        // Перевіряємо чи є достатньо даних
+        if (socket->bytesAvailable() < currentMessageSize) {
+            qDebug() << "Waiting for more data...";
+            return;
+        }
+
+        // Читаємо повідомлення
+        QByteArray data = socket->read(currentMessageSize);
+        currentMessageSize = 0;
+
+        qDebug() << "Received message:" << data;
+
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+        if (!doc.isObject()) {
+            qDebug() << "Invalid JSON received";
+            continue;
+        }
+
+        QJsonObject json = doc.object();
+        QString type = json["type"].toString();
+
+        if (type == "register_response") {
+            bool success = json["success"].toBool();
+            QString message = json["message"].toString();
+
+            if (success) {
+                emit registrationSuccessful();
             } else {
-                std::cerr << "Read error: " << ec.message() << std::endl;
-                connected_ = false;
-                emit disconnected();
+                emit registrationFailed(message);
             }
-        });
-}
+        }
+        else if (type == "login_response") {
+            bool success = json["success"].toBool();
+            QString message = json["message"].toString();
 
-void NetworkClient::doWrite() {
-    if (!socket_ || !connected_ || writeQueue_.empty()) return;
-    
-    boost::asio::async_write(*socket_,
-        boost::asio::buffer(writeQueue_.front()),
-        [this](boost::system::error_code ec, std::size_t /*length*/) {
-            if (!ec) {
-                std::lock_guard<std::mutex> lock(writeMutex_);
-                writeQueue_.pop();
-                if (!writeQueue_.empty()) {
-                    doWrite();
-                }
+            if (success) {
+                emit loginSuccessful();
             } else {
-                std::cerr << "Write error: " << ec.message() << std::endl;
+                emit loginFailed(message);
             }
-        });
-}
+        }
+        else if (type == "message") {
+            QString sender = json["sender"].toString();
+            QString content = json["content"].toString();
+            QString timestamp = json["timestamp"].toString();
 
-void NetworkClient::handleMessage(const Message& msg) {
-    switch (msg.getType()) {
-        case MessageType::SUCCESS:
-            if (msg.getContent().find("Registration") != std::string::npos) {
-                emit registerSuccess();
-            } else if (msg.getContent().find("Login") != std::string::npos) {
-                emit loginSuccess();
-            }
-            break;
-            
-        case MessageType::ERR_MSG:
-            if (msg.getContent().find("Username already exists") != std::string::npos) {
-                emit registerFailed(QString::fromStdString(msg.getContent()));
-            } else if (msg.getContent().find("Invalid credentials") != std::string::npos) {
-                emit loginFailed(QString::fromStdString(msg.getContent()));
-            } else if (msg.getContent().find("offline") != std::string::npos) {
-                emit errorOccurred(QString::fromStdString(msg.getContent()));
-            }
-            break;
-            
-        case MessageType::USER_LIST: {
+            emit messageReceived(sender, content, timestamp);
+        }
+        else if (type == "user_list") {
+            QJsonArray usersArray = json["users"].toArray();
             QStringList users;
-            std::string content = msg.getContent();
-            std::istringstream iss(content);
-            std::string userInfo;
-            
-            while (std::getline(iss, userInfo, ';')) {
-                if (!userInfo.empty()) {
-                    users << QString::fromStdString(userInfo);
-                }
+            for (const QJsonValue& user : usersArray) {
+                users.append(user.toString());
             }
-            
             emit userListReceived(users);
-            break;
         }
-        
-        case MessageType::SEARCH_USER: {
+        else if (type == "search_results") {
+            QJsonArray resultsArray = json["results"].toArray();
             QStringList results;
-            std::string content = msg.getContent();
-            std::istringstream iss(content);
-            std::string userInfo;
-            
-            while (std::getline(iss, userInfo, ';')) {
-                if (!userInfo.empty()) {
-                    results << QString::fromStdString(userInfo);
-                }
+            for (const QJsonValue& result : resultsArray) {
+                results.append(result.toString());
             }
-            
             emit searchResultsReceived(results);
-            break;
         }
-        
-        case MessageType::RECEIVE_MESSAGE:
-            emit messageReceived(
-                QString::fromStdString(msg.getSender()),
-                QString::fromStdString(msg.getContent()),
-                QString::fromStdString(msg.getFormattedTime())
-            );
-            break;
-            
-        default:
-            break;
     }
 }
 
-void NetworkClient::runIoContext() {
-    try {
-        ioContext_.run();
-    } catch (std::exception& e) {
-        std::cerr << "IO context error: " << e.what() << std::endl;
-    }
+void NetworkClient::onError(QAbstractSocket::SocketError error) {
+    QString errorString = socket->errorString();
+    qDebug() << "Connection error:" << errorString;
+    emit connectionError(errorString);
 }

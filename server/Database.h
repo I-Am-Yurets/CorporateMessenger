@@ -1,68 +1,59 @@
 #ifndef DATABASE_H
 #define DATABASE_H
 
-#include <string>
-#include <map>
-#include <vector>
-#include <mutex>
-#include <fstream>
+#include <QString>
+#include <QMap>
+#include <QVector>
+#include <QMutex>
 
-/**
- * @brief Структура для зберігання інформації про користувача
- */
 struct User {
-    std::string username;
-    std::string password;
-    std::string fullName;
-    std::string department;      // Відділ (штатний розпис)
-    std::string position;        // Посада
+    QString username;
+    QString password;
+    QString fullName;
+    QString department;
+    QString position;
     bool isOnline;
 
     User() : isOnline(false) {}
 
-    User(const std::string& user, const std::string& pass,
-         const std::string& name, const std::string& dept,
-         const std::string& pos)
+    User(const QString& user, const QString& pass,
+         const QString& name, const QString& dept,
+         const QString& pos)
         : username(user), password(pass), fullName(name),
           department(dept), position(pos), isOnline(false) {}
 };
 
-/**
- * @brief Клас для управління базою даних користувачів
- *
- * Зберігає дані у текстовому файлі та в пам'яті
- */
 class Database {
 public:
-    Database(const std::string& filename = "users.db");
+    Database(const QString& filename = "users.db");
     ~Database();
 
     // Операції з користувачами
     bool registerUser(const User& user);
-    bool authenticateUser(const std::string& username, const std::string& password);
-    bool userExists(const std::string& username);
+    bool authenticateUser(const QString& username, const QString& password);
+    bool userExists(const QString& username);
 
     // Отримання інформації
-    User getUser(const std::string& username);
-    std::vector<User> getAllUsers();
-    std::vector<User> getOnlineUsers();
-    std::vector<User> searchUsers(const std::string& query);
-    std::vector<User> getUsersByDepartment(const std::string& department);
+    User getUser(const QString& username);
+    QVector<User> getAllUsers();
+    QVector<User> getOnlineUsers();
+    QVector<User> searchUsers(const QString& query);
+    QVector<User> getUsersByDepartment(const QString& department);
 
     // Статус користувача
-    void setUserOnline(const std::string& username, bool online);
-    bool isUserOnline(const std::string& username);
+    void setUserOnline(const QString& username, bool online);
+    bool isUserOnline(const QString& username);
 
     // Збереження даних
     void save();
     void load();
 
 private:
-    std::string filename_;
-    std::map<std::string, User> users_;
-    std::mutex mutex_;
+    QString filename;
+    QMap<QString, User> users;
+    QMutex mutex;
 
-    std::string hashPassword(const std::string& password);
+    QString hashPassword(const QString& password);
 };
 
 #endif // DATABASE_H
