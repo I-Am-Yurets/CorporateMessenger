@@ -6,7 +6,7 @@
             <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>900</width>
+                <width>800</width>
                 <height>600</height>
             </rect>
         </property>
@@ -16,47 +16,111 @@
         <widget class="QWidget" name="centralwidget">
             <layout class="QHBoxLayout" name="horizontalLayout">
                 <item>
-                    <widget class="QGroupBox" name="usersGroupBox">
-                        <property name="title">
-                            <string>Users</string>
-                        </property>
-                        <property name="minimumWidth">
-                            <number>250</number>
-                        </property>
+                    <!-- LEFT PANEL -->
+                    <widget class="QWidget" name="leftPanel" native="true">
                         <property name="maximumWidth">
                             <number>300</number>
                         </property>
                         <layout class="QVBoxLayout" name="verticalLayout">
+                            <!-- AUTH PANEL -->
                             <item>
-                                <widget class="QLineEdit" name="searchEdit">
-                                    <property name="placeholderText">
-                                        <string>Search users...</string>
+                                <widget class="QGroupBox" name="authPanel">
+                                    <property name="title">
+                                        <string>Login / Register</string>
                                     </property>
+                                    <layout class="QVBoxLayout" name="verticalLayout_2">
+                                        <item>
+                                            <widget class="QLineEdit" name="txtUsername">
+                                                <property name="placeholderText">
+                                                    <string>Username</string>
+                                                </property>
+                                            </widget>
+                                        </item>
+                                        <item>
+                                            <widget class="QLineEdit" name="txtPassword">
+                                                <property name="echoMode">
+                                                    <enum>QLineEdit::Password</enum>
+                                                </property>
+                                                <property name="placeholderText">
+                                                    <string>Password</string>
+                                                </property>
+                                            </widget>
+                                        </item>
+                                        <item>
+                                            <widget class="QLineEdit" name="txtDepartment">
+                                                <property name="placeholderText">
+                                                    <string>Department (for register)</string>
+                                                </property>
+                                            </widget>
+                                        </item>
+                                        <item>
+                                            <widget class="QPushButton" name="btnRegister">
+                                                <property name="text">
+                                                    <string>Register</string>
+                                                </property>
+                                            </widget>
+                                        </item>
+                                        <item>
+                                            <widget class="QPushButton" name="btnLogin">
+                                                <property name="text">
+                                                    <string>Login</string>
+                                                </property>
+                                            </widget>
+                                        </item>
+                                    </layout>
                                 </widget>
                             </item>
+                            <!-- USER INFO -->
                             <item>
-                                <widget class="QPushButton" name="refreshButton">
+                                <widget class="QLabel" name="lblUsername">
                                     <property name="text">
-                                        <string>Refresh User List</string>
+                                        <string>&lt;b&gt;User:&lt;/b&gt; Not logged in</string>
                                     </property>
                                 </widget>
                             </item>
                             <item>
-                                <widget class="QListWidget" name="userListWidget"/>
+                                <layout class="QHBoxLayout" name="netLayout">
+                                    <item>
+                                        <widget class="QLineEdit" name="txtIpAddress">
+                                            <property name="placeholderText"><string>Server IP</string></property>
+                                        </widget>
+                                    </item>
+                                    <item>
+                                        <widget class="QPushButton" name="btnConnect">
+                                            <property name="text"><string>Connect</string></property>
+                                        </widget>
+                                    </item>
+                                </layout>
+                            </item>
+
+                            <item>
+                                <widget class="QPushButton" name="btnLogout">
+                                    <property name="text"><string>Logout</string></property>
+                                    <property name="enabled"><bool>false</bool></property>
+                                </widget>
+                            </item>
+                            <!-- USER LIST -->
+                            <item>
+                                <widget class="QLabel" name="label">
+                                    <property name="text">
+                                        <string>Users:</string>
+                                    </property>
+                                </widget>
+                            </item>
+                            <item>
+                                <widget class="QListWidget" name="userList"/>
                             </item>
                         </layout>
                     </widget>
                 </item>
                 <item>
-                    <widget class="QGroupBox" name="chatGroupBox">
-                        <property name="title">
-                            <string>Chat</string>
-                        </property>
-                        <layout class="QVBoxLayout" name="verticalLayout_2">
+                    <!-- CHAT PANEL -->
+                    <widget class="QWidget" name="chatPanel" native="true">
+                        <layout class="QVBoxLayout" name="verticalLayout_3">
                             <item>
-                                <widget class="QLabel" name="chatWithLabel">
+                                <widget class="QLabel" name="lblChatWith">
                                     <property name="text">
-                                        <string>Select a user to start chatting</string>
+                                        <string>&lt;h3&gt;Select a user to chat&lt;/h3&gt;</string>
                                     </property>
                                     <property name="alignment">
                                         <set>Qt::AlignCenter</set>
@@ -64,80 +128,38 @@
                                 </widget>
                             </item>
                             <item>
-                                <widget class="QTextBrowser" name="chatBrowser">
-                                    <property name="openExternalLinks">
-                                        <bool>false</bool>
+                                <widget class="QTextEdit" name="chatDisplay">
+                                    <property name="readOnly">
+                                        <bool>true</bool>
                                     </property>
                                 </widget>
                             </item>
                             <item>
-                                <layout class="QHBoxLayout" name="horizontalLayout_2">
-                                    <item>
-                                        <widget class="QLineEdit" name="messageEdit">
-                                            <property name="placeholderText">
-                                                <string>Type your message...</string>
-                                            </property>
-                                        </widget>
-                                    </item>
-                                    <item>
-                                        <widget class="QPushButton" name="sendButton">
-                                            <property name="text">
-                                                <string>Send</string>
-                                            </property>
-                                            <property name="enabled">
-                                                <bool>false</bool>
-                                            </property>
-                                        </widget>
-                                    </item>
-                                </layout>
+                                <widget class="QWidget" name="widget" native="true">
+                                    <layout class="QHBoxLayout" name="horizontalLayout_2">
+                                        <item>
+                                            <widget class="QLineEdit" name="txtMessage">
+                                                <property name="placeholderText">
+                                                    <string>Type message...</string>
+                                                </property>
+                                            </widget>
+                                        </item>
+                                        <item>
+                                            <widget class="QPushButton" name="btnSend">
+                                                <property name="text">
+                                                    <string>Send</string>
+                                                </property>
+                                            </widget>
+                                        </item>
+                                    </layout>
+                                </widget>
                             </item>
                         </layout>
                     </widget>
                 </item>
             </layout>
         </widget>
-        <widget class="QMenuBar" name="menubar">
-            <property name="geometry">
-                <rect>
-                    <x>0</x>
-                    <y>0</y>
-                    <width>900</width>
-                    <height>22</height>
-                </rect>
-            </property>
-            <widget class="QMenu" name="menuFile">
-                <property name="title">
-                    <string>File</string>
-                </property>
-                <addaction name="actionLogout"/>
-                <addaction name="separator"/>
-                <addaction name="actionExit"/>
-            </widget>
-            <widget class="QMenu" name="menuHelp">
-                <property name="title">
-                    <string>Help</string>
-                </property>
-                <addaction name="actionAbout"/>
-            </widget>
-            <addaction name="menuFile"/>
-            <addaction name="menuHelp"/>
-        </widget>
         <widget class="QStatusBar" name="statusbar"/>
-        <action name="actionLogout">
-            <property name="text">
-                <string>Logout</string>
-            </property>
-        </action>
-        <action name="actionExit">
-            <property name="text">
-                <string>Exit</string>
-            </property>
-        </action>
-        <action name="actionAbout">
-            <property name="text">
-                <string>About</string>
-            </property>
-        </action>
     </widget>
     <resources/>
     <connections/>
