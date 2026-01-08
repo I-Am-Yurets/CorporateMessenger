@@ -4,7 +4,12 @@
 #include <QMainWindow>
 #include <QTcpSocket>
 
+// Forward declarations
 class QListWidgetItem;
+class QPushButton;
+class QLineEdit;
+class QTextEdit;
+class QListWidget;
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -17,23 +22,31 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+    signals:
+        void cloneWindowRequested();
+
 private slots:
-    void onConnectClicked(); // Нове
+    // Мережа
     void onConnected();
     void onDisconnected();
     void onReadyRead();
     void onError(QAbstractSocket::SocketError error);
+
+    // Кнопки
+    void onConnectClicked();
     void onRegisterClicked();
     void onLoginClicked();
-    void onLogoutClicked();  // Нове
+    void onLogoutClicked();
     void onSendClicked();
     void onUserSelected(QListWidgetItem* item);
+    void onCloneWindow();
+    void onRefreshUsers();
 
 private:
     void sendMessage(const QString& msg);
     void addChatMessage(const QString& from, const QString& text, bool outgoing = false);
     void parseMessage(const QString& msg);
-    void updateInterfaceState();
+    void setupMenuBar();
 
     Ui::MainWindow *ui;
     QTcpSocket *socket;

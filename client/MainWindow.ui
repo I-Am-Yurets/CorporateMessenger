@@ -22,6 +22,40 @@
                             <number>300</number>
                         </property>
                         <layout class="QVBoxLayout" name="verticalLayout">
+                            <!-- CONNECTION PANEL -->
+                            <item>
+                                <widget class="QGroupBox" name="connectionPanel">
+                                    <property name="title">
+                                        <string>Server Connection</string>
+                                    </property>
+                                    <layout class="QVBoxLayout" name="verticalLayout_4">
+                                        <item>
+                                            <widget class="QLabel" name="label_ip">
+                                                <property name="text">
+                                                    <string>Server IP:</string>
+                                                </property>
+                                            </widget>
+                                        </item>
+                                        <item>
+                                            <widget class="QLineEdit" name="txtIpAddress">
+                                                <property name="text">
+                                                    <string>127.0.0.1</string>
+                                                </property>
+                                                <property name="placeholderText">
+                                                    <string>Enter server IP</string>
+                                                </property>
+                                            </widget>
+                                        </item>
+                                        <item>
+                                            <widget class="QPushButton" name="btnConnect">
+                                                <property name="text">
+                                                    <string>Connect</string>
+                                                </property>
+                                            </widget>
+                                        </item>
+                                    </layout>
+                                </widget>
+                            </item>
                             <!-- AUTH PANEL -->
                             <item>
                                 <widget class="QGroupBox" name="authPanel">
@@ -79,24 +113,13 @@
                                 </widget>
                             </item>
                             <item>
-                                <layout class="QHBoxLayout" name="netLayout">
-                                    <item>
-                                        <widget class="QLineEdit" name="txtIpAddress">
-                                            <property name="placeholderText"><string>Server IP</string></property>
-                                        </widget>
-                                    </item>
-                                    <item>
-                                        <widget class="QPushButton" name="btnConnect">
-                                            <property name="text"><string>Connect</string></property>
-                                        </widget>
-                                    </item>
-                                </layout>
-                            </item>
-
-                            <item>
                                 <widget class="QPushButton" name="btnLogout">
-                                    <property name="text"><string>Logout</string></property>
-                                    <property name="enabled"><bool>false</bool></property>
+                                    <property name="text">
+                                        <string>Logout</string>
+                                    </property>
+                                    <property name="enabled">
+                                        <bool>false</bool>
+                                    </property>
                                 </widget>
                             </item>
                             <!-- USER LIST -->
