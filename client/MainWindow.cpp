@@ -6,7 +6,6 @@
 #include <QTimer>
 #include <QDebug>
 
-// ВАЖЛИВО: include ui_MainWindow.h ПІСЛЯ всіх Qt includes
 #include "ui_MainWindow.h"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -15,13 +14,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     qDebug() << "[MainWindow] Creating new window instance";
 
-    // Налаштувати меню
     setupMenuBar();
-
-    // Створити сокет
     socket = new QTcpSocket(this);
 
-    // З'єднання сигналів - ВАЖЛИВО: перевірити, що всі елементи UI існують
     if (!ui->btnConnect || !ui->btnRegister || !ui->btnLogin ||
         !ui->btnLogout || !ui->btnSend || !ui->userList) {
         qCritical() << "[MainWindow] ERROR: UI elements not found!";
@@ -29,13 +24,11 @@ MainWindow::MainWindow(QWidget *parent)
         return;
     }
 
-    // З'єднання сигналів мережі
     connect(socket, &QTcpSocket::connected, this, &MainWindow::onConnected);
     connect(socket, &QTcpSocket::disconnected, this, &MainWindow::onDisconnected);
     connect(socket, &QTcpSocket::readyRead, this, &MainWindow::onReadyRead);
     connect(socket, &QTcpSocket::errorOccurred, this, &MainWindow::onError);
 
-    // З'єднання кнопок
     connect(ui->btnConnect, &QPushButton::clicked, this, &MainWindow::onConnectClicked);
     connect(ui->btnRegister, &QPushButton::clicked, this, &MainWindow::onRegisterClicked);
     connect(ui->btnLogin, &QPushButton::clicked, this, &MainWindow::onLoginClicked);
@@ -45,7 +38,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     qDebug() << "[MainWindow] All signals connected successfully";
 
-    // Початковий стан
     ui->authPanel->setEnabled(false);
     ui->chatPanel->setEnabled(false);
     ui->btnSend->setEnabled(false);
@@ -59,8 +51,6 @@ MainWindow::~MainWindow() {
     }
     delete ui;
 }
-
-// === МЕНЮ ===
 
 void MainWindow::setupMenuBar() {
     QMenu* fileMenu = menuBar()->addMenu("File");
@@ -97,8 +87,6 @@ void MainWindow::onRefreshUsers() {
     }
 }
 
-// === ПІДКЛЮЧЕННЯ ===
-
 void MainWindow::onConnectClicked() {
     qDebug() << "[MainWindow] Connect button clicked";
     QString ip = ui->txtIpAddress->text().trimmed();
@@ -114,8 +102,6 @@ void MainWindow::onConnectClicked() {
     qDebug() << "[MainWindow] Connecting to" << ip << ":12345";
     socket->connectToHost(ip, 12345);
 }
-
-// === МЕРЕЖА ===
 
 void MainWindow::onConnected() {
     qDebug() << "[MainWindow] Connected to server";
@@ -137,6 +123,7 @@ void MainWindow::onDisconnected() {
     ui->connectionPanel->setEnabled(true);
     ui->btnLogout->setEnabled(false);
     authenticated = false;
+    receiveBuffer.clear();  // Очистити буфер
 
     setWindowTitle("Corporate Messenger - Disconnected");
 
@@ -144,17 +131,39 @@ void MainWindow::onDisconnected() {
 }
 
 void MainWindow::onReadyRead() {
-    QByteArray data = socket->readAll();
-    QString msg = QString::fromUtf8(data);
+    // Додати нові дані до буфера
+    receiveBuffer.append(socket->readAll());
 
-    // Видалити префікс довжини "123:MSG:..."
-    int colonPos = msg.indexOf(':');
-    if (colonPos > 0) {
-        msg = msg.mid(colonPos + 1);
+    // Обробити всі повні повідомлення в буфері
+    while (true) {
+        // Знайти роздільник довжини
+        int colonPos = receiveBuffer.indexOf(':');
+        if (colonPos == -1) {
+            break; // Немає повного повідомлення
+        }
+
+        // Отримати довжину повідомлення
+        bool ok;
+        int msgLength = receiveBuffer.left(colonPos).toInt(&ok);
+        if (!ok) {
+            qWarning() << "[MainWindow] Invalid message length";
+            receiveBuffer.clear();
+            break;
+        }
+
+        // Перевірити чи є повне повідомлення
+        int totalLength = colonPos + 1 + msgLength;
+        if (receiveBuffer.length() < totalLength) {
+            break; // Повідомлення ще не повністю отримано
+        }
+
+        // Витягти повідомлення
+        QString msg = QString::fromUtf8(receiveBuffer.mid(colonPos + 1, msgLength));
+        receiveBuffer.remove(0, totalLength);
+
+        qDebug() << "[MainWindow] Received:" << msg.left(50);
+        parseMessage(msg);
     }
-
-    qDebug() << "[MainWindow] Received:" << msg.left(50);
-    parseMessage(msg);
 }
 
 void MainWindow::onError(QAbstractSocket::SocketError error) {
@@ -179,7 +188,6 @@ void MainWindow::sendMessage(const QString& msg) {
 }
 
 void MainWindow::parseMessage(const QString& msg) {
-    // OK:...
     if (msg.startsWith("OK:")) {
         QString response = msg.mid(3);
         if (response == "Registered") {
@@ -195,7 +203,6 @@ void MainWindow::parseMessage(const QString& msg) {
             ui->statusbar->showMessage("Logged in as " + username);
             setWindowTitle("Corporate Messenger - " + username);
 
-            // Автоматично запросити список користувачів
             QTimer::singleShot(500, this, [this]() {
                 sendMessage("GET_USERS");
             });
@@ -203,13 +210,11 @@ void MainWindow::parseMessage(const QString& msg) {
             // Повідомлення відправлено
         }
     }
-    // ERROR:...
     else if (msg.startsWith("ERROR:")) {
         QString error = msg.mid(6);
         qWarning() << "[MainWindow] Server error:" << error;
         QMessageBox::warning(this, "Error", error);
     }
-    // USERS:...
     else if (msg.startsWith("USERS:")) {
         QString data = msg.mid(6);
         ui->userList->clear();
@@ -224,7 +229,7 @@ void MainWindow::parseMessage(const QString& msg) {
                 QString dept = parts[1];
                 bool online = parts[2] == "1";
 
-                if (name != username) {  // Не показувати себе
+                if (name != username) {
                     QString status = online ? "[Online]" : "[Offline]";
                     QListWidgetItem* item = new QListWidgetItem(name + " - " + dept + " " + status);
                     item->setData(Qt::UserRole, name);
@@ -236,7 +241,6 @@ void MainWindow::parseMessage(const QString& msg) {
 
         ui->statusbar->showMessage(QString("Users updated: %1 online").arg(ui->userList->count()), 2000);
     }
-    // MSG:sender|text
     else if (msg.startsWith("MSG:")) {
         QString data = msg.mid(4);
         int pos = data.indexOf('|');
@@ -245,22 +249,34 @@ void MainWindow::parseMessage(const QString& msg) {
 
         qDebug() << "[MainWindow] Message from" << from << ":" << text;
 
-        // Якщо чат з цим користувачем відкритий - показати
-        if (from == currentChat) {
-            addChatMessage(from, text, false);
-        }
+        // Перевірити чи це історія чи нове повідомлення
+        if (isLoadingHistory) {
+            // Це повідомлення з історії - просто показати без збереження
+            qDebug() << "[MainWindow] History message - displaying only";
+            if (from == currentChat || from == username) {
+                bool outgoing = (from == username);
+                addChatMessage(from, text, outgoing);
+            }
+        } else {
+            // Це нове повідомлення - зберегти та показати
+            qDebug() << "[MainWindow] New message - storing and displaying";
 
-        // Показати notification
-        ui->statusbar->showMessage("💬 New message from " + from, 5000);
+            // Зберегти в історію
+            storeChatMessage(from, text, false);
 
-        // Якщо вікно не активне - показати в заголовку
-        if (!isActiveWindow()) {
-            setWindowTitle("(!) Corporate Messenger - " + username);
+            // Якщо чат з цим користувачем відкритий - показати
+            if (from == currentChat) {
+                addChatMessage(from, text, false);
+            }
+
+            ui->statusbar->showMessage("💬 New message from " + from, 5000);
+
+            if (!isActiveWindow()) {
+                setWindowTitle("(!) Corporate Messenger - " + username);
+            }
         }
     }
 }
-
-// === КНОПКИ ===
 
 void MainWindow::onRegisterClicked() {
     qDebug() << "[MainWindow] Register button clicked";
@@ -305,6 +321,7 @@ void MainWindow::onLogoutClicked() {
         ui->userList->clear();
         currentChat.clear();
         username.clear();
+        chatHistory.clear();
         setWindowTitle("Corporate Messenger - Connected");
         ui->statusbar->showMessage("Logged out", 3000);
     }
@@ -319,7 +336,13 @@ void MainWindow::onSendClicked() {
 
     qDebug() << "[MainWindow] Sending message to" << currentChat << ":" << text;
     sendMessage("MSG:" + currentChat + "|" + text);
+
+    // Зберегти своє повідомлення в локальній історії
+    storeChatMessage(currentChat, text, true);
+
+    // Показати своє повідомлення відразу
     addChatMessage(username, text, true);
+
     ui->txtMessage->clear();
     ui->txtMessage->setFocus();
 }
@@ -330,6 +353,21 @@ void MainWindow::onUserSelected(QListWidgetItem* item) {
     ui->lblChatWith->setText("Chat with: " + currentChat);
     ui->btnSend->setEnabled(true);
     ui->chatDisplay->clear();
+
+    // Увімкнути режим завантаження історії
+    isLoadingHistory = true;
+    qDebug() << "[MainWindow] Loading history mode enabled";
+
+    // Запросити історію з сервера
+    sendMessage("GET_HISTORY:" + currentChat);
+
+    // Через затримку завершити режим завантаження
+    // (дає час отримати всі повідомлення з сервера)
+    QTimer::singleShot(1000, this, [this]() {
+        isLoadingHistory = false;
+        qDebug() << "[MainWindow] History loading completed";
+    });
+
     ui->txtMessage->setFocus();
 }
 
@@ -343,8 +381,30 @@ void MainWindow::addChatMessage(const QString& from, const QString& text, bool o
                    .arg(alignment, color, from, text);
     ui->chatDisplay->append(html);
 
-    // Прокрутити вниз
     QTextCursor cursor = ui->chatDisplay->textCursor();
     cursor.movePosition(QTextCursor::End);
     ui->chatDisplay->setTextCursor(cursor);
+}
+
+void MainWindow::storeChatMessage(const QString& otherUser, const QString& text, bool outgoing) {
+    // Перевірити чи таке повідомлення вже існує (уникнути дублікатів)
+    QString from = outgoing ? username : otherUser;
+    QString to = outgoing ? otherUser : username;
+
+    for (const auto& msg : chatHistory) {
+        if (msg.from == from && msg.to == to && msg.text == text) {
+            // Повідомлення вже є - не додавати
+            qDebug() << "[MainWindow] Message already exists in history - skipping";
+            return;
+        }
+    }
+
+    ChatMessage msg;
+    msg.from = from;
+    msg.to = to;
+    msg.text = text;
+    msg.timestamp = QDateTime::currentDateTime();
+
+    chatHistory.append(msg);
+    qDebug() << "[MainWindow] Stored message in history:" << from << "->" << to;
 }
